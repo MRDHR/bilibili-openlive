@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="favicon.ico" type="image/x-icon"/>
+    <title>快捷B站开播工具</title>
+    <!-- 引入样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+</head>
+
+<body>
+<div class="container" style="width: 40%;margin: 0 auto" role="main" id="mainpage">
+    <el-card class="box-card">
+        <div class="item">
+            <i class="el-icon-s-home" style="margin-right: 1%;">快捷B站开播工具</i>
+        </div>
+    </el-card>
+
+    <el-card class="box-card" style="margin-top: 1%">
+        <div slot="header" class="clearfix">
+            <span>登录</span>
+        </div>
+        <div>
+            <el-col :span="11" style="margin-right: 2%">
+                <el-input v-model="username" placeholder="请输入Bilibili账号"></el-input>
+            </el-col>
+            <el-col :span="12" style="margin-left: 2%">
+                <el-input v-model="password" placeholder="请输入密码"></el-input>
+            </el-col>
+        </div>
+        <el-button type="primary" style="margin-top: 1%" @click="login">登录</el-button>
+    </el-card>
+
+    <el-card class="box-card" style="margin-top: 1%">
+        <div slot="header" class="clearfix">
+            <span>开启直播间</span>
+        </div>
+        <div class="item">
+            <el-row style="margin-top: 1%">
+                <el-col :span="11" style="margin-right: 2%">
+                    <el-cascader
+                            v-model="selectedOptions"
+                            placeholder="请选择直播分区"
+                            :options="cascaderData"
+                            @active-item-change="handleItemChange"
+                            filterable
+                            :props="{value: 'name',label: 'name',children: 'list'}">
+                    </el-cascader>
+                </el-col>
+                <el-col :span="12" style="margin-left: 2%">
+                    <el-input id="videoName" placeholder="请输入直播间名称" type="text"
+                              v-model="roomName" style="width: 100%">
+                    </el-input>
+                </el-col>
+            </el-row>
+            <el-button style="margin-top: 1%" type="primary" @click="openLiveRoom">开启直播间
+            </el-button>
+        </div>
+    </el-card>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/vue@2.5.17/dist/vue.js"></script>
+<!-- 引入组件库 -->
+<script src="https://unpkg.com/element-ui/lib/index.js"></script>
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+<script type="text/javascript">
+    var vm = new Vue({
+        el: '#mainpage',
+        data: {
+            username: '',
+            password: '',
+            roomName: '',
+            csrf: '',
+            roomid: '',
+            cascaderData: [],
+            selectedOptions: [],
+            success: 'success',
+            warning: 'warning',
+            info: 'info',
+            error: 'error'
+        },
+        methods: {
+            showNotify(title, message, type) {
+                this.$notify({
+                    title: title,
+                    message: message,
+                    type: type
+                });
+            },
+            login() {
+                let data = new FormData();
+                data.append('username', vm.username);
+                data.append('password', vm.password);
+                axios.post("/login", data)
+                    .then(function (response) {
+                        if (response.data['state'] === "ok") {
+                            vm.showNotify('成功', '登录成功', vm.success);
+                            vm.csrf = response.data['csrf'];
+                            vm.roomid = response.data['roomid'];
+                        } else {
+                            vm.showNotify('失败', '登录失败，请重试', vm.error);
+                        }
+                    })
+                    .catch(function (error) {
+                        console.debug(error);
+                        vm.showNotify('失败', '请求错误，请重试', vm.error);
+                    });
+            },
+            getAreaList() {
+                axios.get("/getAreaList")
+                    .then(function (response) {
+                        vm.cascaderData = response.data.data;
+                    })
+                    .catch(function (error) {
+                        console.debug(error);
+                        vm.showNotify('失败', '请求错误，请重试', vm.error);
+                    });
+            }, openLiveRoom() {
+                let data = new FormData();
+                area_id = '';
+                console.log(vm.selectedOptions);
+                data.append('csrf', vm.csrf);
+                data.append('roomid', vm.roomid);
+                data.append('area_id', area_id);
+                axios.post("/openLive", data)
+                    .then(function (response) {
+                        if (response.data['state'] === "ok") {
+                            vm.showNotify('成功', '开播成功', vm.success);
+                            vm.csrf = response.data['csrf'];
+                            vm.roomid = response.data['roomid'];
+                        } else {
+                            vm.showNotify('失败', '开播失败，请重试', vm.error);
+                        }
+                    })
+                    .catch(function (error) {
+                        console.debug(error);
+                        vm.showNotify('失败', '请求错误，请重试', vm.error);
+                    });
+            }, handleItemChange(value) {
+            },
+        },
+        delimiters: ['[[', ']]'],
+        mounted: function () {
+            this.getAreaList();
+        },
+        computed: {}
+    });
+</script>
+</body>
+</html>
