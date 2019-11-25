@@ -31,7 +31,8 @@
                 <el-input v-model="password" placeholder="请输入密码"></el-input>
             </el-col>
         </div>
-        <el-button type="primary" style="margin-top: 1%" @click="login">登录</el-button>
+        <el-button type="primary" style="margin-top: 1%" @click="login" :loading="logging" :disabled="logging">登录
+        </el-button>
     </el-card>
 
     <el-card class="box-card" style="margin-top: 1%">
@@ -47,16 +48,17 @@
                             :options="cascaderData"
                             @active-item-change="handleItemChange"
                             filterable
-                            :props="{value: 'name',label: 'name',children: 'list'}">
+                            :props="{value: 'id',label: 'name',children: 'list'}">
                     </el-cascader>
                 </el-col>
                 <el-col :span="12" style="margin-left: 2%">
-                    <el-input id="videoName" placeholder="请输入直播间名称" type="text"
-                              v-model="roomName" style="width: 100%">
+                    <el-input id="title" placeholder="请输入直播间名称(未填写则不修改)" type="text"
+                              v-model="title" style="width: 100%">
                     </el-input>
                 </el-col>
             </el-row>
-            <el-button style="margin-top: 1%" type="primary" @click="openLiveRoom">开启直播间
+            <el-button style="margin-top: 1%" type="primary" @click="openLiveRoom" :loading="opening"
+                       :disabled="opening">开启直播间
             </el-button>
         </div>
     </el-card>
@@ -72,9 +74,12 @@
         data: {
             username: '',
             password: '',
-            roomName: '',
+            title: '',
             csrf: '',
             roomid: '',
+            cookie: '',
+            logging: false,
+            opening: false,
             cascaderData: [],
             selectedOptions: [],
             success: 'success',
@@ -96,17 +101,20 @@
                 data.append('password', vm.password);
                 axios.post("/login", data)
                     .then(function (response) {
-                        if (response.data['state'] === "ok") {
+                        if (response.data['state'] === "true") {
                             vm.showNotify('成功', '登录成功', vm.success);
                             vm.csrf = response.data['csrf'];
                             vm.roomid = response.data['roomid'];
+                            vm.cookie = response.data['cookie'];
                         } else {
                             vm.showNotify('失败', '登录失败，请重试', vm.error);
                         }
+                        vm.logging = false;
                     })
                     .catch(function (error) {
                         console.debug(error);
                         vm.showNotify('失败', '请求错误，请重试', vm.error);
+                        vm.logging = false;
                     });
             },
             getAreaList() {
@@ -118,26 +126,27 @@
                         console.debug(error);
                         vm.showNotify('失败', '请求错误，请重试', vm.error);
                     });
-            }, openLiveRoom() {
+            },
+            openLiveRoom() {
                 let data = new FormData();
-                area_id = '';
-                console.log(vm.selectedOptions);
                 data.append('csrf', vm.csrf);
                 data.append('roomid', vm.roomid);
-                data.append('area_id', area_id);
+                data.append('area_id', vm.selectedOptions[vm.selectedOptions.length - 1]);
+                data.append('title', vm.title);
+                data.append('cookie', vm.cookie);
                 axios.post("/openLive", data)
                     .then(function (response) {
-                        if (response.data['state'] === "ok") {
+                        if (response.data['state'] === "true") {
                             vm.showNotify('成功', '开播成功', vm.success);
-                            vm.csrf = response.data['csrf'];
-                            vm.roomid = response.data['roomid'];
                         } else {
                             vm.showNotify('失败', '开播失败，请重试', vm.error);
                         }
+                        vm.opening = false;
                     })
                     .catch(function (error) {
                         console.debug(error);
                         vm.showNotify('失败', '请求错误，请重试', vm.error);
+                        vm.opening = false;
                     });
             }, handleItemChange(value) {
             },

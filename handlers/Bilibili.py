@@ -1,21 +1,9 @@
 import base64
-import json
 import re
 import sys
 import time
 
 import requests
-
-import glob
-import json
-import os
-import subprocess
-import uuid
-from concurrent.futures import ThreadPoolExecutor
-
-from tornado import escape
-from tornado.concurrent import run_on_executor
-from tornado.ioloop import IOLoop
 from tornado.web import RequestHandler
 
 
@@ -122,9 +110,10 @@ class LoginHanlder(RequestHandler):
         bilibili = Bilibili()
         result = bilibili.login(self.get_argument('username'), self.get_argument('password'))
         if result:
-            baseInfo = bilibili.get_my_basic_info()
-            roomid = bilibili.getRoomInfoOld(baseInfo['mid'])['roomid']
-            chunk = {'csrf': bilibili.csrf, 'roomid': roomid, "state": "ok"}
+            csrf = bilibili.csrf
+            cookie = bilibili.cookieStr
+            roomid = bilibili.getRoomInfo()['roomid']
+            chunk = {'csrf': csrf, 'roomid': roomid, 'cookie': cookie, "state": "true"}
             self.set_header("Content-Type", "application/json; charset=UTF-8")
             self.finish(chunk)
         else:
@@ -136,13 +125,37 @@ class LoginHanlder(RequestHandler):
 class OpenLiveHandler(RequestHandler):
     def post(self):
         bilibili = Bilibili()
-        bilibili.startLive(self.get_argument('csrf'), self.get_argument('roomid'), self.get_argument('area_id'))
+        cookie = self.get_argument('cookie')
+        if self.get_argument('title'):
+            result = bilibili.updateRoomInfo(self.get_argument('roomid'), self.get_argument('title'),
+                                             self.get_argument('csrf'), cookie)
+            if result:
+                self.openLive(bilibili, cookie)
+            else:
+                chunk = {"state": "false"}
+                self.set_header("Content-Type", "application/json; charset=UTF-8")
+                self.finish(chunk)
+        else:
+            self.openLive(bilibili, cookie)
+
+    def openLive(self, bilibili, cookie):
+        result = bilibili.startLive(self.get_argument('csrf'), self.get_argument('roomid'),
+                                    self.get_argument('area_id'), cookie)
+        if result:
+            chunk = {"state": "true"}
+            self.set_header("Content-Type", "application/json; charset=UTF-8")
+            self.finish(chunk)
+        else:
+            chunk = {"state": "false"}
+            self.set_header("Content-Type", "application/json; charset=UTF-8")
+            self.finish(chunk)
 
 
 class Bilibili:
     def __init__(self):
         self.session = requests.session()
         self.csrf = None
+        self.cookieStr = None
 
     def login(self, username, password):
         """
@@ -168,6 +181,7 @@ class Bilibili:
             )
             if login['status'] == 'OK':
                 print(login['cookie'])
+                self.cookieStr = login['cookie']
                 cookies = {}
                 for line in login['cookie'].split(';')[:-1]:
                     name, value = line.strip().split('=')
@@ -1950,13 +1964,19 @@ class Bilibili:
         print(req)
         return req
 
-    def startLive(self, csrf, room_id, area_id):
+    def startLive(self, csrf, room_id, area_id, cookie):
         """
         开始直播,获取推流码
         :param room_id: 自己直播间id
         :param area_id: 直播间分区id
         :return:
         """
+        cookies = {}
+        for line in cookie.split(';')[:-1]:
+            name, value = line.strip().split('=')
+            cookies[name] = value
+        cookies = requests.utils.cookiejar_from_dict(cookies, cookiejar=None, overwrite=True)
+        self.session.cookies = cookies
         req = self.post(
             url='https://api.live.bilibili.com/room/v1/Room/startLive',
             data={
@@ -1971,9 +1991,10 @@ class Bilibili:
             new_link = req['data']['rtmp']['new_link']
             print("[提示]开播成功,获得推流地址:{}".format(rtmp_code))
             print("[提示]开播成功,获得new_link:{}".format(new_link))
-            return rtmp_code
+            return True
         else:
             print("[提示]开播出现问题!code={},message={}".format(req['code'], req['message']))
+            return False
 
     def stopLive(self, room_id):
         """
@@ -1996,30 +2017,40 @@ class Bilibili:
         else:
             print(req)
 
-    def getRoomInfoOld(self, mid):
+    def getRoomInfo(self):
         """
         获得指定用户的直播间信息
         :param mid:
         :return:
         """
         req = self.get(
-            url='https://api.live.bilibili.com/room/v1/Room/getRoomInfoOld',
-            params={
-                'mid': mid
-            }
+            url='https://api.live.bilibili.com/i/api/liveinfo',
         )
-        if req['code'] == 0 and req['msg'] == 'ok' and req['message'] == 'ok':
+        print(req)
+        if req['code'] == 0:
             data = req['data']
-            print("[提示]直播间状态:{}".format(data['roomStatus']))
-            print("[提示]轮播状态:{}".format(data['roundStatus']))
-            print("[提示]直播状态:{}".format(data['liveStatus']))
-            print("[提示]直播间地址:{}".format(data['url']))
-            print("[提示]直播间标题:{}".format(data['title']))
-            print("[提示]直播间封面:{}".format(data['cover']))
-            print("[提示]在线人数:{}".format(data['online']))
-            print("[提示]房间ID:{}".format(data['roomid']))
-            print("[提示]直播方式:{}".format(data['broadcast_type']))
             return data
         else:
-            print("[提示]发生错误!返回信息为" + req)
+            print("[提示]发生错误!返回信息为", req)
             return ''
+
+    def updateRoomInfo(self, roomid, title, csrfToken, cookie):
+        cookies = {}
+        for line in cookie.split(';')[:-1]:
+            name, value = line.strip().split('=')
+            cookies[name] = value
+        cookies = requests.utils.cookiejar_from_dict(cookies, cookiejar=None, overwrite=True)
+        self.session.cookies = cookies
+        req = self.post(
+            url='https://api.live.bilibili.com/room/v1/Room/update',
+            data={
+                'room_id': roomid,
+                'title': title,
+                'csrf_token': csrfToken
+            }
+        )
+        print(req)
+        if req['code'] == 0:
+            return True
+        else:
+            return False
